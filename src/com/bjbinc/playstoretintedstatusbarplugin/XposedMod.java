@@ -18,28 +18,47 @@ public class XposedMod implements IXposedHookLoadPackage {
 
 
 	@Override
-	public void handleLoadPackage(LoadPackageParam lpparam) throws Throwable {
+	public void handleLoadPackage(final LoadPackageParam lpparam) throws Throwable {
 
 		if (!"com.android.vending".equals(lpparam.packageName))
 			return;
 
-		XposedBridge.hookAllMethods(XposedHelpers.findClass("com.google.android.finsky.layout.actionbar.ActionBarHelper", lpparam.classLoader), "syncState", new XC_MethodHook() {
+		XposedBridge.hookAllMethods(XposedHelpers.findClass("com.google.android.finsky.activities.MainActivity", lpparam.classLoader), "onResume", new XC_MethodHook() {
 			@Override
 			protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
 
 			}
 			@Override
 			protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+				XposedHelpers.callMethod(XposedHelpers.getObjectField(param.thisObject, "mActionBarHelper"), "syncState");
+			}
+		});
+
+
+		XposedBridge.hookAllMethods(XposedHelpers.findClass("com.google.android.finsky.layout.actionbar.ActionBarHelper", lpparam.classLoader), "syncState", new XC_MethodHook() {
+			@Override
+			protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
+			}
+			@Override
+			protected void afterHookedMethod(MethodHookParam param) throws Throwable {
 				Activity mActivity = (Activity) XposedHelpers.getObjectField(param.thisObject, "mActivity");
-				Drawable mDrawable = (Drawable) XposedHelpers.getObjectField(param.thisObject, "mCurrentBackgroundDrawable");
-				int pixel = getMainColorFromActionBarDrawable(mDrawable);
-				if(pixel!=0){
-					StatusBarTintApi.sendColorChangeIntent(pixel, Color.WHITE, -3, -3, mActivity.getApplicationContext());
+				int mCurrentBackendId =  (Integer) XposedHelpers.getObjectField(param.thisObject, "mCurrentBackendId");
+				boolean isDetails = (Boolean) XposedHelpers.callMethod(param.thisObject, "isInMode", 2);
+				if(isDetails){
+					Drawable backgroundDrawable = (Drawable)XposedHelpers.callMethod(param.thisObject, "getBackgroundDrawable", mActivity,2130837556);
+					int color = getMainColorFromActionBarDrawable(backgroundDrawable);
+					StatusBarTintApi.sendColorChangeIntent(color, getIconColorForColor(color), -3, -3, mActivity.getApplicationContext());
+				}
+				else{
+					Class<?> CorpusResourceUtils = XposedHelpers.findClass("com.google.android.finsky.utils.CorpusResourceUtils", lpparam.classLoader);
+					int color = (Integer) XposedHelpers.callStaticMethod(CorpusResourceUtils, "getPrimaryColor", mActivity,mCurrentBackendId);
+					StatusBarTintApi.sendColorChangeIntent(color, Color.WHITE, -3, -3, mActivity.getApplicationContext());
 				}
 			}
 		});
 
 	}
+
 
 	public static int getMainColorFromActionBarDrawable(Drawable drawable) throws IllegalArgumentException {
 		/* This should fix the bug where a huge part of the ActionBar background is drawn white. */
